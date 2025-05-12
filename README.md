@@ -12,7 +12,7 @@ This project is a **penetration testing** tool designed to run various security 
 
    ```bash
    ./setup.sh
-
+   ```
 
 2.  **Configuring the Target Machine**
 
@@ -22,13 +22,13 @@ Tested with ports: 3000, 8000, and 22.
 
    ```bash
    sudo ufw allow 22/tcp
-
+   ```
 
 
 4.  **Execute the tool**:
-
-  sudo python3 script.sh
-
+   ```python
+   sudo python3 script.sh
+   ```
 
 
 
