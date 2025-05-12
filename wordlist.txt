@@ -1,0 +1,12 @@
+admin:admin
+admin:1234
+kali:kali
+admin:123456
+admin:password
+root:root
+root:123456
+root:1234
+root:password
+user:password
+test:test
+
