@@ -30,7 +30,7 @@ Tested with ports: 3000, 8000, and 22.
    sudo python3 script.sh
    ```
 
-DoS SYN and UDP flood with hping3 are working
+DoS SYN and UDP flood with hping3 are working.
 To check the received packets use:
 
 DoS SYN: 
