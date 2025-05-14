@@ -30,7 +30,17 @@ Tested with ports: 3000, 8000, and 22.
    sudo python3 script.sh
    ```
 
+DoS SYN and UDP flood with hping3 are working
+To check the received packets use:
 
+DoS SYN: 
+ ```bash
+sudo netstat -antp | grep SYN_RECV
+```
 
+DoS UDP: 
+```bash
+sudo tcpdump -i any udp
+```
 
 
