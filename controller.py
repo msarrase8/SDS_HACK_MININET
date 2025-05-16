@@ -23,8 +23,8 @@ class HoneypotController(app_manager.RyuApp):
         }
 
         self.redirect_targets = {
-            '192.168.30.10': 'web',  # srvWeb
-            '192.168.30.11': 'ssh'   # srvSSH
+            '192.168.30.200': 'web',  # example 1
+            '192.168.30.201': 'ssh'   # example 2
         }
 
         # Simple port scanning detection
@@ -70,11 +70,6 @@ class HoneypotController(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
-        # Debug
-        arp_pkt = pkt.get_protocol(arp.arp)
-        if arp_pkt:
-            self.logger.info("Received ARP request: who-has %s? Tell %s", arp_pkt.dst_ip, arp_pkt.src_ip)
-
         msg = ev.msg
         datapath = msg.datapath
         parser = datapath.ofproto_parser
@@ -107,7 +102,8 @@ class HoneypotController(app_manager.RyuApp):
 
         # --- Port scan detection ---
         now = time.time()
-        dst = dst_ipself.port_activity[src_ip][dst].append(now)
+        dst = dst_ip
+        self.port_activity[src_ip][dst].append(now)
         self.cleanup_old_activity(src_ip)
 
         unique_ports = len(self.port_activity[src_ip])
@@ -121,7 +117,7 @@ class HoneypotController(app_manager.RyuApp):
 
         # --- Honeypot redirection ---
         if dst_ip in self.redirect_targets:
-            honeypot = self.honeypot[self.redirect_targets[dst_ip]]
+            honeypot = self.honeypots[self.redirect_targets[dst_ip]]
             self.logger.info("Redirecting traffic from %s -> %s to honeypot %s", src_ip, dst_ip, honeypot['ip'])
 
             match = parser.OFPMatch(eth_type=0x0800, ipv4_dst=dst_ip)
@@ -147,10 +143,10 @@ class HoneypotController(app_manager.RyuApp):
                                   data=msg.data)
         datapath.send_msg(out)
 
-def cleanup_old_activity(self, src_ip):
-    now = time.time()
-    for dst in list(self.port_activity[src_ip]):
-        timestamps = self.port_activity[src_ip][dst]
-        self.port_activity[src_ip][dst] = [t for t in timestamps if now - t <= self.scan_window]
-        if not self.port_activity[src_ip][dst]:
-            del self.port_activity[src_ip][dst]
+    def cleanup_old_activity(self, src_ip):
+        now = time.time()
+        for dst in list(self.port_activity[src_ip]):
+            timestamps = self.port_activity[src_ip][dst]
+            self.port_activity[src_ip][dst] = [t for t in timestamps if now - t <= self.scan_window]
+            if not self.port_activity[src_ip][dst]:
+                del self.port_activity[src_ip][dst]
