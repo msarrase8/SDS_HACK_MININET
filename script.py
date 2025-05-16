@@ -4,6 +4,7 @@ import requests
 import paramiko
 import socket
 import signal
+from ryu.lib.packet import arp
 
 
 def check_port(ip, port, timeout=2):
