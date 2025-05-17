@@ -5,6 +5,7 @@ from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4
 from collections import defaultdict
+#from collections.abc import MutableMapping
 import time
 
 class HoneypotController(app_manager.RyuApp):
@@ -28,8 +29,8 @@ class HoneypotController(app_manager.RyuApp):
         }
 
         # Simple port scanning detection
-        self.scan_window = 10 # seconds
-        self.scan_threshold = 5 # unique ports per source in window
+        self.scan_window = 10000 # seconds
+        self.scan_threshold = 5000 # unique ports per source in window
         self.port_activity = defaultdict(lambda: defaultdict(list)) # src_ip -> dst_ip -> timestamps
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)

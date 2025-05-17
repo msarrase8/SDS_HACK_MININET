@@ -6,11 +6,14 @@ class MyTopo(Topo):
         Topo.__init__(self)
 
         # Define a virtual gateway IP for the attacker's external network
-        VGW_EXTERNAL_IP = '100.100.100.1' # sw_edge will act as this gateway for the attacker
+        #VGW_EXTERNAL_IP = '100.100.100.1' # sw_edge will act as this gateway for the attacker
 
         # Control network (192.168.10.0/24)
         idsSnort = self.addHost('idsSnort', ip='192.168.10.10/24', mac='00:00:00:10:00:10')
         logServer = self.addHost('logServer', ip='192.168.10.11/24', mac='00:00:00:10:00:11')
+        # Attacker
+        attacker = self.addHost('attacker', ip='192.168.10.12/24', mac='00:00:00:DE:AD:01')
+                        #defaultRoute='via {}'.format(VGW_EXTERNAL_IP))
 
         # LAN network (192.168.20.0/24)
         pc1 = self.addHost('pc1', ip='192.168.20.10/24', mac='00:00:00:20:00:10')
@@ -27,9 +30,6 @@ class MyTopo(Topo):
         hpSsh = self.addHost('hpSsh', ip='192.168.99.11/24', mac='00:00:00:99:00:11')
         hpWeb = self.addHost('hpWeb', ip='192.168.99.10/24', mac='00:00:00:99:00:10')
 
-        # Attacker
-        attacker = self.addHost('attacker', ip='100.100.100.100/24', mac='00:00:00:DE:AD:01',
-                                defaultRoute='via {}'.format(VGW_EXTERNAL_IP))
 
         # Switches
         sw_control = self.addSwitch('s1')  # For 192.168.10.0/24
@@ -66,5 +66,17 @@ class MyTopo(Topo):
 
         # Attacker is connected to the edge switch
         self.addLink(attacker, sw_edge)
+
+        # Añadir router (sin IP por ahora)
+        router = self.addHost('router', ip=None)
+
+        # Enlaces desde el router a cada red
+        self.addLink(router, sw_control)   # conectará con 192.168.10.0/24
+        self.addLink(router, sw_lan)       # conectará con 192.168.20.0/24
+        self.addLink(router, sw_dmz)       # conectará con 192.168.30.0/24
+        self.addLink(router, sw_honeynet)  # conectará con 192.168.99.0/24
+
+
+
 
 topos = {'mytopo': (lambda: MyTopo())}
