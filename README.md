@@ -1,1 +1,1 @@
-Run controller, run mininent, try ping from attacker to any machine, and finally launch the port scan python script. Controller should show some logs saying that port scan has been detected and the attacker ip has been banned. Try ping again from attacker to anywhere, should be blocked.
+Run controller, run mininet, try ping from attacker to any machine, and finally launch the port scan python script. Controller should show some logs saying that port scan has been detected and the attacker ip has been banned. Try ping again from attacker to anywhere, should be blocked.
