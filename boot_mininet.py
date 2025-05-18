@@ -54,6 +54,15 @@ def setup_routing(net):
     print(f"\nRoutes on Mininet router '{router.name}':")
     print(router.cmd("ip route"))
 
+def safe_pingall(net):
+    print("*** Safe PingAll: testing host-to-host reachability")
+    for src in net.hosts:
+        for dst in net.hosts:
+            if src != dst:
+                result = src.cmd(f'ping -c1 -W1 {dst.IP()}')
+                success = '1 received' in result or '1 packets received' in result
+                print(f'{src.name} -> {dst.name}: {"✔" if success else "✘"}')
+
 def configure_dns(net):
     print("\nConfiguring DNS for Mininet hosts (using 8.8.8.8 and 1.1.1.1)...")
     for host in net.hosts:
@@ -66,15 +75,46 @@ def configure_dns(net):
              host.cmd("echo 'nameserver 8.8.8.8' > /etc/resolv.conf")
              host.cmd("echo 'nameserver 1.1.1.1' >> /etc/resolv.conf")
 
+def start_services(net):
+    print("[*] Iniciando servicios simulados en hosts...")
+
+    # Honeynet
+    net.get('hpWeb').cmd("python3 -m http.server 80 &")           # HTTP
+    net.get('hpSsh').cmd("nc -l -p 22 &")                         # SSH fake
+    net.get('hpWindows').cmd("nc -l -p 3389 &")                   # RDP fake
+
+    # DMZ
+    net.get('srvWeb').cmd("python3 -m http.server 8080 &")       # Web interno en otro puerto
+    net.get('srvDns').cmd("nc -ul -p 53 &")                       # DNS fake (UDP)
+
+    # Servidores internos
+    net.get('srvDb').cmd("nc -l -p 3306 &")                       # MySQL fake
+    net.get('srvFiles').cmd("python3 -m http.server 2121 &")     # FTP fake
+
+    # Log server escuchando por syslog (UDP)
+    net.get('logServer').cmd("nc -ul -p 514 &")                  # Syslog
+
+    # (Opcional) Clientes LAN con servicios abiertos (poco realista, pero útil para pruebas)
+    net.get('pc1').cmd("nc -l -p 8888 &")
+    net.get('pc2').cmd("nc -l -p 8889 &")
+
+def launch_attacker_terminal(net):
+    attacker = net.get('attacker')
+    script_path = os.path.abspath("script.py")
+
+    print("[*] Lanzando xterm para 'attacker' con script de ataque...")
+
+    # Construye el comando que se ejecutará dentro del xterm
+    attacker.cmd(f'xterm -e "sudo python3 {script_path}" &')
+
 if __name__ == '__main__':
-    print("Ensuring host IP forwarding is enabled...")
     if os.system("sudo sysctl -w net.ipv4.ip_forward=1") != 0:
         print("Warning: Failed to enable IP forwarding on host. Internet might not work.")
 
     topo = MyTopo()
     net = Mininet(topo=topo,
                   switch=OVSKernelSwitch,
-                  controller=RemoteController, # Or just Controller if local
+                  controller=RemoteController,
                   autoSetMacs=True,
                   autoStaticArp=True
                   )
@@ -134,12 +174,7 @@ if __name__ == '__main__':
     print(f"Adding: {forward_cmd2}")
     nat_node.cmd(forward_cmd2)
 
-    # NAT table: POSTROUTING chain for Masquerade
-    # This changes the source IP from internal Mininet IPs to nat0's external IP
-    # The source can be broad (0.0.0.0/0) if the FORWARD rules correctly restrict what comes from int_if.
-    # Or, specify the source network seen on int_if, which is 10.0.0.0/24,
-    # but the actual source IPs like 192.168.10.1 need to be NATed.
-    # So, matching on input interface for MASQUERADE is usually fine.
+    # POSTROUTING chain for Masquerade
     nat_masquerade_cmd = f"iptables -t nat -A POSTROUTING -o {nat_node_external_if} -j MASQUERADE"
     print(f"Adding: {nat_masquerade_cmd}")
     nat_node.cmd(nat_masquerade_cmd)
@@ -156,6 +191,8 @@ if __name__ == '__main__':
     # Configure DNS for Mininet hosts
     configure_dns(net)
 
+    start_services(net)
+    launch_attacker_terminal(net)
     CLI(net)
 
     print("\nStopping network...")
