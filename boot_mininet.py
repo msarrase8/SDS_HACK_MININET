@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 from mininet.net import Mininet
 from mininet.node import RemoteController
 from mininet.cli import CLI
@@ -51,6 +52,42 @@ def safe_pingall(net):
                 print(f'{src.name} -> {dst.name}: {"✔" if success else "✘"}')
 
 
+def start_services(net):
+    print("[*] Iniciando servicios simulados en hosts...")
+
+    # Honeynet
+    net.get('hpWeb').cmd("python3 -m http.server 80 &")           # HTTP
+    net.get('hpSsh').cmd("nc -l -p 22 &")                         # SSH fake
+    net.get('hpWindows').cmd("nc -l -p 3389 &")                   # RDP fake
+
+    # DMZ
+    net.get('srvWeb').cmd("python3 -m http.server 8080 &")       # Web interno en otro puerto
+    net.get('srvDns').cmd("nc -ul -p 53 &")                       # DNS fake (UDP)
+
+    # Servidores internos
+    net.get('srvDb').cmd("nc -l -p 3306 &")                       # MySQL fake
+    net.get('srvFiles').cmd("python3 -m http.server 2121 &")     # FTP fake
+
+    # Log server escuchando por syslog (UDP)
+    net.get('logServer').cmd("nc -ul -p 514 &")                  # Syslog
+
+    # (Opcional) Clientes LAN con servicios abiertos (poco realista, pero útil para pruebas)
+    net.get('pc1').cmd("nc -l -p 8888 &")
+    net.get('pc2').cmd("nc -l -p 8889 &")
+
+
+def launch_attacker_terminal(net):
+    attacker = net.get('attacker')
+    script_path = os.path.abspath("script.py")
+    #target_ip = "192.168.99.10"  # IP objetivo, cámbiala si quieres otro host
+
+    print("[*] Lanzando xterm para 'attacker' con script de ataque...")
+
+    # Construye el comando que se ejecutará dentro del xterm
+    #attacker.cmd(f'xterm -e "sudo python3 {script_path} {target_ip}" &')
+    attacker.cmd(f'xterm -e "sudo python3 {script_path}" &')
+
+
 
 
 if __name__ == '__main__':
@@ -58,6 +95,8 @@ if __name__ == '__main__':
     net = Mininet(topo=topo, controller=RemoteController)
     net.start()
     setup_routing(net)
+    start_services(net)
+    launch_attacker_terminal(net)
     #safe_pingall(net) #Check connectivity
     CLI(net)
     net.stop()

