@@ -3,7 +3,7 @@ from mininet.net import Mininet
 from mininet.node import RemoteController
 from mininet.cli import CLI
 from mininet.link import TCLink
-from topology import MyTopo  # Asegúrate de que el nombre del archivo coincide
+from topology import MyTopo
 
 def setup_routing(net):
     router = net.get('router')

@@ -3,7 +3,7 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet, ethernet, ipv4
+from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp
 from collections import defaultdict
 #from collections.abc import MutableMapping
 import time
@@ -28,10 +28,11 @@ class HoneypotController(app_manager.RyuApp):
             '192.168.30.201': 'ssh'   # example 2
         }
 
-        # Simple port scanning detection
-        self.scan_window = 10000 # seconds
-        self.scan_threshold = 5000 # unique ports per source in window
-        self.port_activity = defaultdict(lambda: defaultdict(list)) # src_ip -> dst_ip -> timestamps
+        # Port scanning detection parameters
+        self.ps_window = 30  # seconds
+        self.ps_threshold = 15 # unique ports per target IP from a source IP
+        # Structure src_ip -> dst_ip {'ports': {port_num}, 'timestamps': [access_time]}
+        self.port_scan_activity = defaultdict(lambda: defaultdict(lambda: {'ports': set(), 'timestamps': []}))
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -79,18 +80,25 @@ class HoneypotController(app_manager.RyuApp):
         in_port = msg.match['in_port']
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
-        ip_pkt = pkt.get_protocol(ipv4.ipv4)
 
-        if not eth or eth.ethertype != 0x0800 or not ip_pkt:
-            return # Ignore non-IPv4 
+        if not eth:
+            return
+
+        # ARP already handled in switch_features
+        if eth.ethertype == 0x0806:
+            return
+
+        ip_pkt = pkt.get_protocol(ipv4.ipv4)
+        if not ip_pkt:
+            return
 
         dpid = datapath.id
         self.mac_to_port.setdefault(dpid, {})
-
         src_mac = eth.src
         dst_mac = eth.dst
         src_ip = ip_pkt.src
         dst_ip = ip_pkt.dst
+
         self.mac_to_port[dpid][src_mac] = in_port
 
         # Block traffic from malicious IPs
@@ -102,19 +110,39 @@ class HoneypotController(app_manager.RyuApp):
             return
 
         # --- Port scan detection ---
-        now = time.time()
-        dst = dst_ip
-        self.port_activity[src_ip][dst].append(now)
-        self.cleanup_old_activity(src_ip)
+        dst_port = None
+        if ip_pkt.proto == 6: # TCP
+            tcp_pkt = pkt.get_protocol(tcp.tcp)
+            if tcp_pkt:
+                dst_port = tcp_pkt.dst_port
+        elif ip_pkt.proto == 17:
+            udp_pkt = pkt.get_protocol(udp.udp)
+            if udp_pkt:
+                dst_port = udp_pkt.dst_port
 
-        unique_ports = len(self.port_activity[src_ip])
-        if unique_ports >= self.scan_threshold:
-            self.logger.warning("Port scan detected from %s - blocking", src_ip)
-            self.blocked_ips.add(src_ip)
-            match = parser.OFPMatch(eth_type=0x800, ipv4_src=src_ip)
-            actions = []
-            self.add_flow(datapath, 100, match, actions)
-            return
+        if dst_port is not None: # If it's TCP or UDP with a valid PORT
+            now = time.time()
+            activity = self.port_scan_activity[src_ip][dst_ip]
+
+            activity['timestamps'] = [t for t in activity['timestamps'] if now - t <= self.ps_window]
+
+            # Only add port and current timestamp if it's a new port or if existing timestamps are within window
+            if not activity['timestamps'] or (now - activity['timestamps'][0] <= self.ps_window):
+                activity['ports'].add(dst_port)
+                activity['timestamps'].append(now)
+                activity['timestamps'].sort()
+            else:
+                activity['ports'] = {dst_port}
+                activity['timestamps'] = [now]
+
+            if len(activity['ports']) >= self.ps_threshold and \
+               activity['timestamps'] and [now - activity['timestamps'][0] <= self.ps_window]:
+               self.logger.warning(f"Port scan detected from {src_ip} targeting {dst_ip} ({len(activity['ports'])} ports). Blocking {src_ip}.")
+               self.blocked_ips.add(src_ip)
+               match_block_scanner = parser.OFPMatch(eth_type=0x0800, ipv4_src=src_ip)
+               actions_block = []
+               self.add_flow(datapath, 100, match_block_scanner, actions_block) # High priority drop
+               return
 
         # --- Honeypot redirection ---
         if dst_ip in self.redirect_targets:
@@ -143,11 +171,3 @@ class HoneypotController(app_manager.RyuApp):
                                   actions=actions,
                                   data=msg.data)
         datapath.send_msg(out)
-
-    def cleanup_old_activity(self, src_ip):
-        now = time.time()
-        for dst in list(self.port_activity[src_ip]):
-            timestamps = self.port_activity[src_ip][dst]
-            self.port_activity[src_ip][dst] = [t for t in timestamps if now - t <= self.scan_window]
-            if not self.port_activity[src_ip][dst]:
-                del self.port_activity[src_ip][dst]
