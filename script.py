@@ -125,11 +125,11 @@ def menu():
         print("0. Change IP")
         print("1. Escanear puertos")
         print("2. Intentar acceso SSH")
-        print("3. Intentar acceso Telnet")
-        print("4. Atacar servidor web")
-        print("5. Lanzar SYN flood")
-        print("6. Lanzar UDP flood")
-        print("7. Salir")
+        #print("3. Intentar acceso Telnet")
+        #print("4. Atacar servidor web")
+        print("3. Lanzar SYN flood")
+        print("4. Lanzar UDP flood")
+        print("5. Salir")
         print("\n")
 
         choice = input("Elige una opción: ")
@@ -139,17 +139,17 @@ def menu():
             scan_ports(ip)
         elif choice == '2':
             ssh_attempt(ip, file)
+        #elif choice == '3':
+        #    telnet_attempt(ip)
+        #elif choice == '4':
+        #    web_attack(ip)
         elif choice == '3':
-            telnet_attempt(ip)
-        elif choice == '4':
-            web_attack(ip)
-        elif choice == '5':
             port = int(input("Introduce el puerto para SYN flood: "))
             syn_flood(ip, port)
-        elif choice == '6':
+        elif choice == '4':
             port = int(input("Introduce el puerto para UDP flood: "))
             udp_flood(ip, port)
-        elif choice == '7':
+        elif choice == '5':
             print("Saliendo del programa...")
             break
         else:

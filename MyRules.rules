@@ -1,0 +1,4 @@
+alert tcp any any -> any any (flags: S; dsize: 0; msg:"NMAP SYN scan to port 80"; sid:100004; rev:1;)
+
+alert icmp any any -> any any (msg:"ICMP flood"; sid:1100002; classtype:icmp-event; detection_filter:track by_dst, count 500, seconds 3;)
+alert tcp any any -> any any (flags: S; msg:"Possible DoS Attack Type : SYN flood"; flow:stateless; sid:1100003; detection_filter:track by_dst, count 20, seconds 10;)
