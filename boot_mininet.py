@@ -125,6 +125,17 @@ if __name__ == '__main__':
     print("\nStarting network...")
     net.start()
 
+    mirror_switch_name_in_mininet = 's6'
+    host_dummy_interface_for_snort = 'sds_snort_if'
+    ofport_for_mirror_tap = 4
+
+    print(f"Bridging Mininet switch {mirror_switch_name_in_mininet}'s OFPort {ofport_for_mirror_tap} to host interface {host_dummy_interface_for_snort}...")
+    # Ensure sds_snort_if is created on host first: sudo ip link add name sds_snort_if type dummy && sudo ip link set sds_snort_if up
+    add_port_cmd = f"sudo ovs-vsctl add-port {mirror_switch_name_in_mininet} {host_dummy_interface_for_snort} -- set interface {host_dummy_interface_for_snort} ofport_request={ofport_for_mirror_tap}"
+    print(f"Executing: {add_port_cmd}")
+    os.system(add_port_cmd)
+    os.system(f"sudo ip link set {host_dummy_interface_for_snort} up")
+
     # --- Configure nat0 node ---
     print(f"\n--- Configuring nat0 ({nat_node.name}) ---")
     nat_node_internal_if = "nat0-eth0" # Interface connected to Mininet (s6)

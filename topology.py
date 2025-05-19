@@ -13,7 +13,6 @@ class MyTopo(Topo):
         logServer = self.addHost('logServer', ip='192.168.10.11/24', mac='00:00:00:10:00:11')
         # Attacker
         attacker = self.addHost('attacker', ip='192.168.10.12/24', mac='00:00:00:DE:AD:01')
-                        #defaultRoute='via {}'.format(VGW_EXTERNAL_IP))
 
         # LAN network (192.168.20.0/24)
         pc1 = self.addHost('pc1', ip='192.168.20.10/24', mac='00:00:00:20:00:10')
