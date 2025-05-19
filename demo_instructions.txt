@@ -1,0 +1,161 @@
+# SDS Project: Honeypot and IDS Demo README
+
+This guide outlines the steps to run a demonstration of the integrated system, including Mininet network emulation, Ryu SDN controller with security features, host-based Snort IDS, and traffic monitoring.
+
+## I. System Components & Setup Files
+
+* **Mininet Topology:** Defined in `topology.py`.
+* **Mininet Launch Script:** `boot_mininet.py` (configures network, NAT, host Snort bridge).
+* **Ryu SDN Controller:** `HoneypotController.py` (L2 switching, monitoring, Snort alert handling, honeypot redirection, IP blocking).
+* **Snort (on Host Machine):**
+    * Configuration: `/etc/snort/snort.conf`
+    * Custom Rules: `/etc/snort/rules/custom.rules`
+    * Dummy Interface for Sniffing: `sds_snort_if`
+* **Monitoring Backend (on Host Machine):**
+    * InfluxDB (database `RYU`)
+    * Telegraf (listening on UDP `127.0.0.1:8094`)
+    * Grafana (dashboard at `http://localhost:3000`)
+
+## II. Pre-Demo Configuration Checklist
+
+**Ensure the following are correctly set in `HoneypotController.py`:**
+
+1.  **`self.snort_socket_path`**: Path to Snort's alert Unix socket (e.g., `'/tmp/snort_alert.sock'` or `/var/log/snort/snort_alert`). Must match where host-Snort creates it.
+2.  **`self.mirror_switch_dpid`**: DPID of the Mininet switch where attacker traffic will be mirrored from (e.g., `6` if `s6`).
+3.  **`self.mirror_to_host_snort_port`**: OpenFlow port number on `mirror_switch_dpid` that will be bridged to the host's `sds_snort_if` (e.g., `4`).
+4.  **`self.honeypot_ip`**: IP of your honeypot Mininet host (e.g., `'192.168.99.12'` for `hpWindows`).
+5.  **`self.honeypot_mac`**: MAC address of your honeypot Mininet host.
+6.  **`self.output_port_on_mirror_switch_to_honeypot_path`**: OpenFlow port number on `mirror_switch_dpid` that is the next hop towards the honeypot (e.g., if `mirror_switch` is `s6` and path is `s6->s5->s4->hpWindows`, this is the port on `s6` connecting to `s5`).
+
+**Ensure Snort rules on the host machine are set up, especially:**
+* An Nmap detection rule (e.g., for TCP SYN to port 80 on `$HOME_NET`) with `msg:"NMAP TCP SYN scan to port 80"`.
+* (Optional for blocking test) A SYN flood detection rule with `msg:"Possible DoS Attack Type : SYN flood"`.
+* `$HOME_NET` in host's `/etc/snort/snort.conf` includes relevant Mininet subnets (e.g., `192.168.20.10/24` for `pc1`).
+* `output alert_unixsock` is active in host's `snort.conf`.
+* `config pidpath: /tmp` (or similar writable path) in host's `snort.conf`.
+
+**Ensure `boot_mininet.py` correctly executes:**
+* `sudo ovs-vsctl add-port <mirror_switch_name> sds_snort_if -- set interface sds_snort_if ofport_request=<mirror_to_host_snort_port>`
+
+## III. Demo Execution Steps
+
+**A. Start Backend Services & Controller (on Host Machine)**
+
+1.  **Start/Verify Monitoring Backend:**
+    ```bash
+    sudo systemctl start influxdb
+    sudo systemctl start telegraf
+    sudo systemctl status influxdb telegraf 
+    ```
+    *(Optional: Tail Telegraf logs: `sudo journalctl -u telegraf -f`)*
+
+2.  **Start Ryu Controller (Terminal 1):**
+    ```bash
+    ryu-manager HoneypotController.py --verbose
+    ```
+    *Watch for: "SnortLib socket server configured...", switch connections.*
+
+3.  **Start Snort (Terminal 2 - on Host Machine):**
+    ```bash
+    # Clean up previous instances
+    sudo rm -f /tmp/snort_alert.sock /tmp/snort_alert /tmp/snort_*.pid
+    # Ensure dummy interface for Snort is up
+    sudo ip link set sds_snort_if up 
+    # Run Snort
+    sudo snort -A unsock -c /etc/snort/snort.conf -i sds_snort_if -l /tmp -q
+    ```
+    *Remove `-q` and add `-vde` for verbose debugging if alerts don't appear in Ryu.*
+    *Watch for: "Commencing packet processing" without errors.*
+
+**B. Start Mininet and Prepare Observation (Terminal 3 - on Host Machine)**
+
+4.  **Start Mininet:**
+    ```bash
+    sudo python3 boot_mininet.py
+    ```
+    *Wait for the `mininet>` prompt. Check for any errors during startup, especially the `ovs-vsctl add-port` command.*
+
+5.  **(Optional) Open Terminals for Observation:**
+    ```bash
+    mininet> xterm hpWindows pc1 attacker
+    ```
+    * In `hpWindows` xterm: `sudo tcpdump -i hpWindows-eth0 -ne tcp port 80 or icmp`
+    * In `pc1` xterm: `sudo tcpdump -i pc1-eth0 -ne tcp port 80 or icmp`
+    * In `attacker` xterm: `sudo tcpdump -i attacker-eth0 -ne tcp port 80 or host <pc1_IP>`
+
+**C. Test Scenario 1: Nmap Scan and Honeypot Redirection**
+
+Target for Nmap scan: `pc1` (IP: `192.168.20.10`)
+Honeypot: `hpWindows` (IP: `192.168.99.12`)
+
+6.  **Verify Normal Connectivity (Before Attack):**
+    ```bash
+    mininet> attacker ping 192.168.20.10 -c 1
+    ```
+    *Expected: Ping successful. Traffic seen on `pc1` tcpdump, not `hpWindows`.*
+
+7.  **Launch Nmap Scan from Attacker:**
+    ```bash
+    mininet> attacker nmap -sS -p 80 192.168.20.10
+    ```
+
+8.  **Observe System Response:**
+    * **Ryu Logs (Terminal 1):**
+        * `<<< Snort Alert from Host Snort: NMAP TCP SYN scan to port 80 >>>`
+        * `[!] NMAP scan from <attacker_IP> ... detected. Redirecting...`
+        * `Installing REDIRECT flow...`
+        * `Installing REVERSE flow...` (Verify MACs used here are correct from your topology)
+    * **Host Snort Logs (Terminal 2, if verbose):** May show Nmap alert processing.
+    * **`pc1` tcpdump:** Will see the initial Nmap SYN packets.
+
+9.  **Test Redirection (POST-Nmap):**
+    ```bash
+    mininet> attacker wget -O - --timeout=10 --tries=1 [http://192.168.20.10/](http://192.168.20.10/)
+    ```
+    * **Expected `wget` Output:** Should fetch content from `hpWindows`'s web server (directory listing). It should NOT timeout if redirection and reverse flow are correct.
+    * **`hpWindows` tcpdump:** SHOULD show incoming HTTP GET request from `attacker_IP` to `hpWindows_IP` on port 80.
+    * **`pc1` tcpdump:** Should NOT see this `wget` traffic.
+
+10. **(Optional) Further Test with Ping (POST-Nmap):**
+    ```bash
+    mininet> attacker ping 192.168.20.10 -c 3
+    ```
+    * **`hpWindows` tcpdump:** SHOULD see these ICMP echo requests.
+    * **`attacker` ping output:** Should receive replies that *appear* to be from `192.168.20.10`.
+
+**D. (If Implemented) Test Scenario 2: SYN Flood and Blocking**
+
+11. **Launch SYN Flood from Attacker (ensure `hping3` is on `attacker`):**
+    ```bash
+    mininet> attacker sudo hping3 -S -p 80 --fast -c 500 192.168.20.10
+    ```
+
+12. **Observe System Response:**
+    * **Ryu Logs (Terminal 1):**
+        * `<<< Snort Alert from Host Snort: Possible DoS Attack Type : SYN flood >>>`
+        * `[!] SYN Flood detected from <attacker_IP>. Applying block.`
+        * `Installing BLOCK flow...`
+    * **Host Snort Logs (Terminal 2, if verbose):** May show SYN flood alert processing.
+
+13. **Test if Attacker is Blocked:**
+    ```bash
+    mininet> attacker ping 192.168.20.10 -c 2
+    mininet> attacker ping 8.8.8.8 -c 2 
+    ```
+    * *Expected: Both pings should fail (100% packet loss) if the block is effective.*
+
+**E. Check Monitoring Data**
+
+14. **Generate varied traffic** (pings, iperf between different hosts).
+15. **Access Grafana (`http://localhost:3000`):**
+    * Check your dashboards for `sds_port_stats` and `sds_flow_stats`.
+    * You should see traffic spikes corresponding to your tests.
+    * For flow stats, look for entries with non-zero packet/byte counts that correspond to the L2 flows installed by Ryu for actual host-to-host communication.
+
+**F. Cleanup**
+16. In Mininet CLI: `exit`
+17. Stop Ryu controller (Ctrl+C in Terminal 1).
+18. Stop Host Snort (Ctrl+C in Terminal 2).
+19. *(Optional) Stop Telegraf/InfluxDB if done for the session: `sudo systemctl stop telegraf influxdb`*
+
+This provides a structured way to demonstrate the key functionalities of your project. Remember to adjust IPs and expected behaviors based on your exact configurations and which host you target with the Nmap scan.
